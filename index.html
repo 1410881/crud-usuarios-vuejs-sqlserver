@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD - Gestión de Usuarios</title>
+    
+    <!-- Vue.js 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-1px);
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(102, 126, 234, 0.1);
+        }
+        
+        .fade-enter-active, .fade-leave-active {
+            transition: opacity 0.3s;
+        }
+        
+        .fade-enter-from, .fade-leave-to {
+            opacity: 0;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Navbar -->
+        <nav class="navbar navbar-dark mb-4">
+            <div class="container">
+                <span class="navbar-brand mb-0 h1">
+                    <i class="fas fa-users me-2"></i>
+                    Gestión de Usuarios
+                </span>
+                <span class="navbar-text">
+                    CRUD con Vue.js y SQL Server
+                </span>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- Alertas -->
+            <transition name="fade">
+                <div v-if="alert.show" :class="'alert alert-' + alert.type + ' alert-dismissible fade show'" role="alert">
+                    <i :class="alertIcon"></i>
+                    {{ alert.message }}
+                    <button type="button" class="btn-close" @click="hideAlert"></button>
+                </div>
+            </transition>
+
+            <!-- Formulario para crear/editar usuarios -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-plus me-2"></i>
+                        {{ editingUser ? 'Editar Usuario' : 'Nuevo Usuario' }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form @submit.prevent="saveUser">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="nombre" class="form-label">Nombre *</label>
+                                <input 
+                                    type="text" 
+                                    class="form-control" 
+                                    id="nombre" 
+                                    v-model="userForm.nombre" 
+                                    required
+                                    :disabled="loading"
+                                >
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email *</label>
+                                <input 
+                                    type="email" 
+                                    class="form-control" 
+                                    id="email" 
+                                    v-model="userForm.email" 
+                                    required
+                                    :disabled="loading"
+                                >
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="telefono" class="form-label">Teléfono</label>
+                                <input 
+                                    type="tel" 
+                                    class="form-control" 
+                                    id="telefono" 
+                                    v-model="userForm.telefono"
+                                    :disabled="loading"
+                                >
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="edad" class="form-label">Edad</label>
+                                <input 
+                                    type="number" 
+                                    class="form-control" 
+                                    id="edad" 
+                                    v-model="userForm.edad" 
+                                    min="0" 
+                                    max="120"
+                                    :disabled="loading"
+                                >
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary" :disabled="loading">
+                                <span v-if="loading" class="loading me-2"></span>
+                                <i v-else :class="editingUser ? 'fas fa-save' : 'fas fa-plus'" class="me-2"></i>
+                                {{ editingUser ? 'Actualizar' : 'Crear' }} Usuario
+                            </button>
+                            <button v-if="editingUser" type="button" class="btn btn-secondary" @click="cancelEdit" :disabled="loading">
+                                <i class="fas fa-times me-2"></i>
+                                Cancelar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Lista de usuarios -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2"></i>
+                        Lista de Usuarios ({{ users.length }})
+                    </h5>
+                    <button class="btn btn-outline-primary btn-sm" @click="loadUsers" :disabled="loading">
+                        <i class="fas fa-sync-alt me-1" :class="{ 'fa-spin': loading }"></i>
+                        Actualizar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div v-if="loading && users.length === 0" class="text-center p-4">
+                        <div class="loading mx-auto mb-3" style="width: 40px; height: 40px; border-width: 4px;"></div>
+                        <p class="text-muted">Cargando usuarios...</p>
+                    </div>
+                    
+                    <div v-else-if="users.length === 0" class="text-center p-4">
+                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No hay usuarios registrados</p>
+                    </div>
+                    
+                    <div v-else class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Teléfono</th>
+                                    <th>Edad</th>
+                                    <th>Estado</th>
+                                    <th>Fecha Creación</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="user in users" :key="user.id">
+                                    <td>{{ user.id }}</td>
+                                    <td>
+                                        <i class="fas fa-user me-2 text-primary"></i>
+                                        {{ user.nombre }}
+                                    </td>
+                                    <td>
+                                        <i class="fas fa-envelope me-2 text-info"></i>
+                                        {{ user.email }}
+                                    </td>
+                                    <td>
+                                        <i class="fas fa-phone me-2 text-success"></i>
+                                        {{ user.telefono || 'N/A' }}
+                                    </td>
+                                    <td>{{ user.edad || 'N/A' }}</td>
+                                    <td>
+                                        <span :class="'badge bg-' + (user.activo ? 'success' : 'secondary')">
+                                            {{ user.activo ? 'Activo' : 'Inactivo' }}
+                                        </span>
+                                    </td>
+                                    <td>{{ formatDate(user.fechaCreacion) }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button 
+                                                class="btn btn-outline-primary" 
+                                                @click="editUser(user)"
+                                                :disabled="loading"
+                                                title="Editar"
+                                            >
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button 
+                                                class="btn btn-outline-danger" 
+                                                @click="deleteUser(user.id)"
+                                                :disabled="loading"
+                                                title="Eliminar"
+                                            >
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    users: [],
+                    userForm: {
+                        nombre: '',
+                        email: '',
+                        telefono: '',
+                        edad: null
+                    },
+                    editingUser: null,
+                    loading: false,
+                    alert: {
+                        show: false,
+                        type: 'success',
+                        message: ''
+                    }
+                }
+            },
+            computed: {
+                alertIcon() {
+                    const icons = {
+                        success: 'fas fa-check-circle',
+                        danger: 'fas fa-exclamation-triangle',
+                        warning: 'fas fa-exclamation-circle',
+                        info: 'fas fa-info-circle'
+                    };
+                    return icons[this.alert.type] || icons.info;
+                }
+            },
+            methods: {
+                async loadUsers() {
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/api/users');
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.users = result.data;
+                        } else {
+                            this.showAlert('danger', 'Error al cargar usuarios: ' + result.message);
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showAlert('danger', 'Error de conexión al cargar usuarios');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async saveUser() {
+                    this.loading = true;
+                    try {
+                        const url = this.editingUser ? `/api/users/${this.editingUser.id}` : '/api/users';
+                        const method = this.editingUser ? 'PUT' : 'POST';
+                        
+                        const response = await fetch(url, {
+                            method: method,
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(this.userForm)
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.showAlert('success', result.message);
+                            this.resetForm();
+                            await this.loadUsers();
+                        } else {
+                            this.showAlert('danger', result.message + (result.errors ? ': ' + result.errors.join(', ') : ''));
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showAlert('danger', 'Error de conexión al guardar usuario');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async deleteUser(id) {
+                    if (!confirm('¿Estás seguro de que quieres eliminar este usuario?')) {
+                        return;
+                    }
+
+                    this.loading = true;
+                    try {
+                        const response = await fetch(`/api/users/${id}`, {
+                            method: 'DELETE'
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            this.showAlert('success', result.message);
+                            await this.loadUsers();
+                        } else {
+                            this.showAlert('danger', 'Error al eliminar usuario: ' + result.message);
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        this.showAlert('danger', 'Error de conexión al eliminar usuario');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                editUser(user) {
+                    this.editingUser = user;
+                    this.userForm = {
+                        nombre: user.nombre,
+                        email: user.email,
+                        telefono: user.telefono || '',
+                        edad: user.edad
+                    };
+                },
+
+                cancelEdit() {
+                    this.editingUser = null;
+                    this.resetForm();
+                },
+
+                resetForm() {
+                    this.userForm = {
+                        nombre: '',
+                        email: '',
+                        telefono: '',
+                        edad: null
+                    };
+                    this.editingUser = null;
+                },
+
+                showAlert(type, message) {
+                    this.alert = {
+                        show: true,
+                        type: type,
+                        message: message
+                    };
+                    
+                    // Auto-hide after 5 seconds
+                    setTimeout(() => {
+                        this.hideAlert();
+                    }, 5000);
+                },
+
+                hideAlert() {
+                    this.alert.show = false;
+                },
+
+                formatDate(dateString) {
+                    if (!dateString) return 'N/A';
+                    const date = new Date(dateString);
+                    return date.toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+            },
+
+            async mounted() {
+                await this.loadUsers();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
